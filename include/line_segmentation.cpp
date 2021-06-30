@@ -786,15 +786,15 @@ pixel strips::go_around_and_cut_helper(pixel current_pixel, Direction dir)
     // number of pixels we will reach that belong to black rectangle in a current strip if we go up
     int black_pixels_in_strip_up = current_strip.black_pixels_count(border_up.top(), border_up.bottom());
 
-    auto try_to_find_path = [&](Direction up_down) {
+    auto try_to_find_path = [&](Direction up_down, bool relaxed = false) {
         // this is some heuristics we use to decide if we should try to go down
-        if (up_down == Direction::down && height_down <= d && (height_down <= d/2 || black_pixels_in_strip_down <= 0.25*height_down)) {
+        if (relaxed || (up_down == Direction::down && height_down <= d && (height_down <= d/2 || black_pixels_in_strip_down <= 0.25*height_down))) {
             // return true if path is found
             return bfs_go_around(current_pixel.previous_pixel(dir), candidates_down, dir);
         }
 
         // this is some heuristics we use to decide if we should try to go up
-        if (up_down == Direction::up && height_up <= d && (height_up <= d/2 || black_pixels_in_strip_up <= 0.25*height_up)) {
+        if (relaxed || (up_down == Direction::up && height_up <= d && (height_up <= d/2 || black_pixels_in_strip_up <= 0.25*height_up))) {
             // return true if path is found
             return bfs_go_around(current_pixel.previous_pixel(dir), candidates_up, dir);
         }
@@ -807,6 +807,14 @@ pixel strips::go_around_and_cut_helper(pixel current_pixel, Direction dir)
                         (try_to_find_path(Direction::down) || try_to_find_path(Direction::up)) :
                         // first try to find path going up and then going down
                         (try_to_find_path(Direction::up) || try_to_find_path(Direction::down));
+
+    if (!path_found) {
+        path_found = (box.bottom() - current_pixel.j <= current_pixel.j - box.top()) ? 
+                        // first try to find path going down and then going up
+                        (try_to_find_path(Direction::down, true) || try_to_find_path(Direction::up, true)) :
+                        // first try to find path going up and then going down
+                        (try_to_find_path(Direction::up, true) || try_to_find_path(Direction::down, true));
+    }
 
     if (!path_found) {
         // we need to cut

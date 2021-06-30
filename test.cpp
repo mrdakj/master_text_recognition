@@ -1,35 +1,50 @@
 #include <fdeep/fdeep.hpp>
 #include "include/image.h"
 
-int main()
+int main(int argc, char** argv)
 {
-    const auto model = fdeep::load_model("../model/fdeep_model.json", true, fdeep::dev_null_logger);
+    if (argc != 2) {
+        std::cout << "usage: ./main letter" << std::endl;
+        return -1;
+    }
 
-    int good = 0;
+    std::string letter = argv[1];
+
+    // const auto model_one_two = fdeep::load_model("../model/one_two.json", true, fdeep::dev_null_logger);
+    const auto model_one = fdeep::load_model("../model/one.json", true, fdeep::dev_null_logger);
+    // const auto model_first = fdeep::load_model("../model/first.json", true, fdeep::dev_null_logger);
+    // const auto model_second = fdeep::load_model("../model/second.json", true, fdeep::dev_null_logger);
+
     int all = 0;
 
-    for(auto& p: fs::directory_iterator("a")) {
+    // std::vector<int> output_class_one_two(2,0);
+    std::vector<int> output_class_one(26,0);
+
+    for(auto& p: fs::directory_iterator(letter)) {
         ++all;
         auto image_name = p.path().string();
-        char letter = image_name[0];
-        // std::cout << letter << std::endl;
         image img(image_name);
         img.resize(28,28);
 
         auto t = img.get_tensor(0,1);
 
-        // std::cout << fdeep::show_tensor_shape(t.shape());
-        // std::cout << fdeep::show_tensor(t) << std::endl;
-        // const auto result = model.predict({t});
-        // std::cout << fdeep::show_tensors(result) << std::endl;
+        const auto result_class_one = model_one.predict_class({t});
+        ++output_class_one[result_class_one];
 
-        const auto result_class = model.predict_class({t});
-        char result = 97+result_class;
-        if (result == letter) {
-            ++good;
-        }
-        // std::cout << result << std::endl;
+        // const auto probs_one = model_one.predict({t}).front();
+        // std::vector<float> vec = probs_one.to_vector();
+        // float prob_one = probs_one.get(fdeep::tensor_pos(result_class_one));
+        // std::cout << fdeep::show_tensor_shape(probs_one.shape()) << std::endl;
+        // std::cout << fdeep::show_tensor(probs_one) << std::endl;
     }
 
-    std::cout << (double)good/(double)all << std::endl;
+    // std::cout << "all " << all << std::endl;
+    // std::cout << "one " << output_class_one_two[0] << " " << output_class_one_two[0]/(double)all << std::endl;
+    // std::cout << "two " << output_class_one_two[1] << " " << output_class_one_two[1]/(double)all << std::endl;
+
+    for (int i = 0; i < 26; i++) {
+        std::cout << (char)(97+i) << " ";
+        std::cout << 100*((double)output_class_one[i]/(double)all) << " ";
+        std::cout << std::endl;
+    }
 }

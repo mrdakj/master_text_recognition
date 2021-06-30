@@ -20,6 +20,7 @@ project(main)
 add_executable(main "")
 target_link_libraries(main ${OpenCV_LIBS})
 target_sources(main PRIVATE
+    # test.cpp
     ./include/image.cpp
     ./include/image.h
     ./include/line_segmentation.cpp
