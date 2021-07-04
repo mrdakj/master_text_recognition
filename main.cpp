@@ -7,6 +7,7 @@
 #include "include/image.h"
 #include "include/line_segmentation.h"
 #include "jamspell/spell_corrector.hpp"
+#include <cassert>
 
 const auto model_one = fdeep::load_model("../model/one.json", true, fdeep::dev_null_logger);
 const auto model_one_two = fdeep::load_model("../model/one_two.json", true, fdeep::dev_null_logger);
@@ -104,8 +105,25 @@ std::string get_components(const image& img, int line_num)
                 for (auto pp : pixels) {
                     im(pp.j - b.top(), pp.i - b.left()) = img(pp);
                 }
-                im.crop();
+
                 if (!is_dot(im)) {
+                    cv::waitKey(0);
+                    int min_j = 0;
+                    int max_j = 0;
+                    for (int j_pom = 0; j_pom < im.cols(); ++j_pom) {
+                        for (int i_half = 0; i_half < im.rows()/2; ++i_half) {
+                            if (im.check_color({i_half, j_pom}, Color::black)) {
+                                if (min_j == 0) {
+                                    min_j = j_pom;
+                                }
+                                max_j = j_pom;
+                            }
+                        }
+                    }
+
+                    int dot_point = b.left() + (min_j + max_j)/2;
+                    b.set_dot_point(dot_point);
+
                     components.emplace_back(b, std::move(im));
                 }
                 else {
@@ -122,9 +140,7 @@ std::string get_components(const image& img, int line_num)
     for (auto& dot : dots) {
         int dot_middle = (dot.first.left() + dot.first.right()) / 2;
         auto component = std::min_element(components.begin(), components.end(), [&](auto const& lhs, auto const& rhs){
-                auto left_component_middle = (lhs.first.left() + lhs.first.right()) / 2;
-                auto right_component_middle = (rhs.first.left() + rhs.first.right()) / 2;
-                return std::abs(dot_middle - left_component_middle) < std::abs(dot_middle - right_component_middle);
+                return std::abs(dot_middle - lhs.first.dot_point()) < std::abs(dot_middle - rhs.first.dot_point());
         });
 
         if (component == components.end()) {

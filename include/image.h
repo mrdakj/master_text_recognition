@@ -70,6 +70,7 @@ struct borders {
         , m_right(right)
         , m_top(top)
         , m_bottom(bottom)
+        , m_dot_point(-1)
     {
     }
 
@@ -112,8 +113,19 @@ struct borders {
         return m_bottom;
     }
 
+    int dot_point() const
+    {
+        return m_dot_point;
+    }
+
+    void set_dot_point(int dot_point)
+    {
+        m_dot_point = dot_point;
+    }
+
 private:
     int m_left, m_right, m_top, m_bottom;
+    int m_dot_point;
 };
 
 class image {
