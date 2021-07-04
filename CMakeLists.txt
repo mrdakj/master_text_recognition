@@ -14,11 +14,18 @@ set(CMAKE_CXX_FLAGS_RELEASE "-O3")
 
 find_package(OpenCV REQUIRED)
 include_directories(${OpenCV_INCLUDE_DIRS})
+link_directories(${PROJECT_BINARY_DIR}/jamspell)
+include_directories(${CMAKE_SOURCE_DIR})
 
+add_subdirectory(jamspell)
+add_subdirectory(contrib)
 
 project(main)
 add_executable(main "")
 target_link_libraries(main ${OpenCV_LIBS})
+
+target_link_libraries(main jamspell_lib)
+
 target_sources(main PRIVATE
     # test.cpp
     ./include/image.cpp

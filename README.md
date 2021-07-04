@@ -1,3 +1,5 @@
+Used: https://github.com/bakwc/JamSpell  
+
 Used: https://github.com/Dobiasd/frugally-deep
 
 frugally-deep

@@ -6,11 +6,14 @@
 #include <fdeep/fdeep.hpp>
 #include "include/image.h"
 #include "include/line_segmentation.h"
+#include "jamspell/spell_corrector.hpp"
 
 const auto model_one = fdeep::load_model("../model/one.json", true, fdeep::dev_null_logger);
 const auto model_one_two = fdeep::load_model("../model/one_two.json", true, fdeep::dev_null_logger);
 const auto model_first = fdeep::load_model("../model/first.json", true, fdeep::dev_null_logger);
 const auto model_second = fdeep::load_model("../model/second.json", true, fdeep::dev_null_logger);
+
+NJamSpell::TSpellCorrector corrector;
 
 std::unordered_set<std::string> dictionary;
 
@@ -82,7 +85,7 @@ void glue(std::pair<borders,image>& component, std::pair<borders,image>& dot)
             component.first.bottom());
 }
 
-void get_components(const image& img, int line_num)
+std::string get_components(const image& img, int line_num)
 {
     fs::create_directory("../out/" + std::to_string(line_num));
 
@@ -119,7 +122,9 @@ void get_components(const image& img, int line_num)
     for (auto& dot : dots) {
         int dot_middle = (dot.first.left() + dot.first.right()) / 2;
         auto component = std::min_element(components.begin(), components.end(), [&](auto const& lhs, auto const& rhs){
-                return std::abs(dot_middle - lhs.first.right()) < std::abs(dot_middle - rhs.first.right());
+                auto left_component_middle = (lhs.first.left() + lhs.first.right()) / 2;
+                auto right_component_middle = (rhs.first.left() + rhs.first.right()) / 2;
+                return std::abs(dot_middle - left_component_middle) < std::abs(dot_middle - right_component_middle);
         });
 
         if (component == components.end()) {
@@ -174,6 +179,7 @@ void get_components(const image& img, int line_num)
     }
     double height_avg = (double)height_sum/(double)components.size();
 
+    std::string line;
     int image_count = 0;
     std::vector<std::string> words_candidates(1,"");
 
@@ -216,20 +222,23 @@ void get_components(const image& img, int line_num)
             if (this_diff >= 1.6*prev_diff || this_diff >= 1.6*next_diff) {
                 if (this_diff >= 1.6*space_avg || this_diff >= 1.6*get_avg_neighbors(i,10)) {
                     if (words_candidates.size() == 1) {
-                        std::cout <<  words_candidates[0];
+                        line += words_candidates[0];
+                        // std::cout <<  words_candidates[0];
                     }
                     else {
                         bool found = false;
                         for (const auto& word : words_candidates) {
                             if (dictionary.find(word) != dictionary.end() && !(word.size() == 1 && word != "a")) {
-                                std::cout <<  word;
+                                line += word;
+                                // std::cout <<  word;
                                 found = true;
                                 break;
                             }
                         }
 
                         if (!found) {
-                            std::cout << words_candidates[0];
+                            line += words_candidates[0];
+                            // std::cout << words_candidates[0];
                         }
                     }
                     // if (words_candidates.size() > 1) {
@@ -245,7 +254,8 @@ void get_components(const image& img, int line_num)
                     //     std::cout << "}";
                     // }
 
-                    std::cout << " ";
+                    line += " ";
+                    // std::cout << " ";
                     words_candidates.clear();
                     words_candidates.push_back("");
                 }
@@ -267,26 +277,31 @@ void get_components(const image& img, int line_num)
         //     std::cout << "}";
         // }
         if (words_candidates.size() == 1) {
-            std::cout <<  words_candidates[0];
+            line += words_candidates[0];
+            // std::cout <<  words_candidates[0];
         }
         else {
             bool found = false;
             for (const auto& word : words_candidates) {
                 if (dictionary.find(word) != dictionary.end() && !(word.size() == 1 && word != "a")) {
-                    std::cout <<  word;
+                    line += word;
+                    // std::cout <<  word;
                     found = true;
                     break;
                 }
             }
 
             if (!found) {
-                std::cout << words_candidates[0];
+                line += words_candidates[0];
+                // std::cout << words_candidates[0];
             }
         }
     }
+
+    return line;
 }
 
-bool bfs(const image& img, pixel p, int line_num, int line_num_components)
+bool bfs(const image& img, pixel p, int line_num, int line_num_components, bool use_dictionary)
 {
     std::unordered_set<pixel, pixel::hash> visited;
     std::queue<pixel> q;
@@ -328,8 +343,14 @@ bool bfs(const image& img, pixel p, int line_num, int line_num_components)
         line.crop();
         line.save("../out/line" + std::to_string(line_num) + ".png");
         if (line_num_components == -1 || line_num == line_num_components) {
-            get_components(line, line_num);
-            std::cout  << std::endl;
+            auto line_text = get_components(line, line_num);
+            if (use_dictionary) {
+                auto line_fixed = corrector.FixFragment(std::wstring(line_text.begin(), line_text.end()));
+                std::cout << std::string(line_fixed.begin(), line_fixed.end()) << std::endl;
+            }
+            else {
+                std::cout << line_text << std::endl;
+            }
         }
         return true;
     }
@@ -337,19 +358,19 @@ bool bfs(const image& img, pixel p, int line_num, int line_num_components)
     return false;
 }
 
-void bfs(const image& img, int line_num_components)
+void bfs(const image& img, int line_num_components, bool use_dictionary)
 {
     int line_num = 0;
     for (int j = 1; j < img.rows(); ++j) {
         if (j == 1 || img.check_color({j-1,0}, Color::gray)) {
-            if (bfs(img, {j,0}, line_num, line_num_components)) {
+            if (bfs(img, {j,0}, line_num, line_num_components, use_dictionary)) {
                 ++line_num;
             }
         }
     }
 }
 
-void process_image(const fs::path& img_name, int line_num_components)
+void process_image(const fs::path& img_name, int line_num_components, bool use_dictionary)
 {
     std::cout << img_name << std::endl;
     try {
@@ -362,7 +383,7 @@ void process_image(const fs::path& img_name, int line_num_components)
         auto result_image = s.result();
 
         result_image.save(std::string("../out/") + std::string(img_name.filename()));
-        bfs(result_image, line_num_components);
+        bfs(result_image, line_num_components, use_dictionary);
     } 
     catch (std::exception& ex) {
         std::cerr << ex.what() << std::endl;
@@ -384,10 +405,8 @@ std::pair<std::string, std::string> recognize(image& component)
 }
 
 int main(int argc, char** argv) {
-    load_dictionary();
-
     if (argc < 2) {
-        std::cout << "./keras2cpp path_to_img [line_num_components]" << std::endl;
+        std::cout << "./keras2cpp path_to_img [line_num_components] [dictionary]" << std::endl;
         return -1;
     }
 
@@ -396,9 +415,25 @@ int main(int argc, char** argv) {
     }
     fs::create_directory("../out");
 
-    int line_num_components = (argc == 3) ? std::stoi(argv[2]) : -1;
+    int line_num_components = -1;
+    bool use_dictionary = false;
 
-    process_image(argv[1], line_num_components);
+    for (int i = 2; i < argc; ++i) {
+        if (std::string(argv[i]) == "dictionary") {
+            use_dictionary = true;
+        }
+        else {
+            line_num_components = std::stoi(argv[i]);
+        }
+    }
+
+    if (use_dictionary) {
+        corrector.LoadLangModel("../model/en.bin");
+        std::cout << "model loaded" << std::endl;
+    }
+
+    load_dictionary();
+    process_image(argv[1], line_num_components, use_dictionary);
 
     return 0;
 }
