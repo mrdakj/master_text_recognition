@@ -86,7 +86,7 @@ void glue(std::pair<borders,image>& component, std::pair<borders,image>& dot)
             component.first.bottom());
 }
 
-std::string get_components(const image& img, int line_num)
+std::string get_components(const image& img, int line_num, bool use_dictionary)
 {
     fs::create_directory("../out/" + std::to_string(line_num));
 
@@ -107,7 +107,6 @@ std::string get_components(const image& img, int line_num)
                 }
 
                 if (!is_dot(im)) {
-                    cv::waitKey(0);
                     int min_j = 0;
                     int max_j = 0;
                     for (int j_pom = 0; j_pom < im.cols(); ++j_pom) {
@@ -158,7 +157,7 @@ std::string get_components(const image& img, int line_num)
         space_diff.push_back(std::max(components[i+1].first.left() - components[i].first.right(), 0));
     }
 
-    auto get_avg_neighbors = [&](int i, int n) {
+    auto get_avg_neighbors = [&](int i, int n, double space_size_heuristics) {
         int sum = space_diff[i];
         int current = 1;
         int taken = 0;
@@ -171,9 +170,19 @@ std::string get_components(const image& img, int line_num)
                 stop = false;
                 ++taken;
             }
+            else if (i+current == space_diff.size()) {
+                sum += space_size_heuristics;
+                stop = false;
+                ++taken;
+            }
 
             if (i-current >= 0) {
                 sum += space_diff[i-current];
+                stop = false;
+                ++taken;
+            }
+            else if (i-current == -1) {
+                sum += space_size_heuristics;
                 stop = false;
                 ++taken;
             }
@@ -206,72 +215,91 @@ std::string get_components(const image& img, int line_num)
         bool not_above_height_avg = components[i].second.rows() <= height_avg;
         auto prediction = recognize(components[i].second);
 
-        if (prediction.first == "l" && not_above_height_avg) {
-            prediction.first = "c";
-        }
-
-        if (prediction.first == "j" && not_above_height_avg) {
-            prediction.first = "i";
-        }
-
-        if (prediction.first == "p" && not_above_height_avg) {
-            prediction.first = "e";
-        }
 
         std::vector<std::string> words_candidates_to_add;
         for (auto& word : words_candidates) {
+            if (prediction.first == "l" && not_above_height_avg) {
+                words_candidates_to_add.push_back(word + "c");
+                words_candidates_to_add.push_back(word + "e");
+            }
+            if (prediction.first == "j" && not_above_height_avg) {
+                words_candidates_to_add.push_back(word + "i");
+            }
+            if (prediction.first == "p" && not_above_height_avg) {
+                words_candidates_to_add.push_back(word + "e");
+            }
             if (!prediction.second.empty()) {
                 words_candidates_to_add.push_back(word + prediction.second);
             }
+
             word += prediction.first;
         }
 
         for (auto& word : words_candidates_to_add) {
             words_candidates.push_back(std::move(word));
         }
+        // for (auto w : words_candidates) {
+        //     std::cout << w << std::endl;
+        // }
 
         if (i != (int)components.size()-1) {
             int this_diff = std::max(components[i+1].first.left() - components[i].first.right(), 0);
 
             int prev_diff = (i > 0) ? std::max(components[i].first.left() - components[i-1].first.right(), 0) : 999999;
             int next_diff = (i+2 < (int)components.size()) ?  std::max(components[i+2].first.left() - components[i+1].first.right(), 0) : 99999;
-            if (this_diff >= 1.6*prev_diff || this_diff >= 1.6*next_diff) {
-                if (this_diff >= 1.6*space_avg || this_diff >= 1.6*get_avg_neighbors(i,10)) {
+            if (this_diff >= 1.5*prev_diff || this_diff >= 1.5*next_diff) {
+                if (this_diff >= 1.5*space_avg && this_diff >= 1.5*get_avg_neighbors(i,10, 1.5*space_avg)) {
                     if (words_candidates.size() == 1) {
                         line += words_candidates[0];
-                        // std::cout <<  words_candidates[0];
                     }
                     else {
                         bool found = false;
                         for (const auto& word : words_candidates) {
                             if (dictionary.find(word) != dictionary.end() && !(word.size() == 1 && word != "a")) {
                                 line += word;
-                                // std::cout <<  word;
                                 found = true;
                                 break;
                             }
                         }
 
                         if (!found) {
-                            line += words_candidates[0];
-                            // std::cout << words_candidates[0];
+                            // if (use_dictionary) {
+                            //     for (const auto& word : words_candidates) {
+                            //         if (found) {
+                            //             break;
+                            //         }
+                            //         auto candidates = corrector.GetCandidates({std::wstring(word.begin(), word.end())}, 0);
+                            //         for (const auto& can_w : candidates) {
+                            //             std::string can(can_w.begin(), can_w.end());
+                            //             if (dictionary.find(can) != dictionary.end() && !(can.size() == 1 && can != "a")) {
+                            //                 line += can;
+                            //                 found = true;
+                            //                 break;
+                            //             }
+                            //         }
+                            //     }
+                            // }
+
+                            if (!found) {
+                                line += words_candidates[0];
+                            }
                         }
                     }
+
                     // if (words_candidates.size() > 1) {
-                    //     std::cout << "{";
+                    //     line += "{";
                     // }
                     // for (int w = 0; w < words_candidates.size(); w++) {
-                    //     std::cout <<  words_candidates[w];
+                    //     line +=  words_candidates[w];
                     //     if (w != words_candidates.size()-1) {
-                    //         std::cout << ",";
+                    //         line += ",";
                     //     }
                     // }
                     // if (words_candidates.size() > 1) {
-                    //     std::cout << "}";
+                    //     line += "}";
                     // }
 
                     line += " ";
-                    // std::cout << " ";
                     words_candidates.clear();
                     words_candidates.push_back("");
                 }
@@ -280,38 +308,56 @@ std::string get_components(const image& img, int line_num)
     }
 
     if (!words_candidates.empty() && !words_candidates[0].empty()) {
-        // if (words_candidates.size() > 1) {
-        //     std::cout << "{";
-        // }
-        // for (int w = 0; w < words_candidates.size(); w++) {
-        //     std::cout <<  words_candidates[w];
-        //     if (w != words_candidates.size()-1) {
-        //         std::cout << ",";
-        //     }
-        // }
-        // if (words_candidates.size() > 1) {
-        //     std::cout << "}";
-        // }
-        if (words_candidates.size() == 1) {
-            line += words_candidates[0];
-            // std::cout <<  words_candidates[0];
-        }
-        else {
-            bool found = false;
-            for (const auto& word : words_candidates) {
-                if (dictionary.find(word) != dictionary.end() && !(word.size() == 1 && word != "a")) {
-                    line += word;
-                    // std::cout <<  word;
-                    found = true;
-                    break;
-                }
-            }
+         // if (words_candidates.size() > 1) {
+         //     line += "{";
+         // }
+         // for (int w = 0; w < words_candidates.size(); w++) {
+         //     line +=  words_candidates[w];
+         //     if (w != words_candidates.size()-1) {
+         //         line += ",";
+         //     }
+         // }
+         // if (words_candidates.size() > 1) {
+         //     line += "}";
+         // }
+        
+        
+         if (words_candidates.size() == 1) {
+             line += words_candidates[0];
+         }
+         else {
+             bool found = false;
+             for (const auto& word : words_candidates) {
+                 if (dictionary.find(word) != dictionary.end() && !(word.size() == 1 && word != "a")) {
+                     line += word;
+                     found = true;
+                     break;
+                 }
+             }
 
-            if (!found) {
-                line += words_candidates[0];
-                // std::cout << words_candidates[0];
-            }
-        }
+             if (!found) {
+                // if (use_dictionary) {
+                //     for (const auto& word : words_candidates) {
+                //         if (found) {
+                //             break;
+                //         }
+                //         auto candidates = corrector.GetCandidates({std::wstring(word.begin(), word.end())}, 0);
+                //         for (const auto& can_w : candidates) {
+                //             std::string can(can_w.begin(), can_w.end());
+                //             if (dictionary.find(can) != dictionary.end() && !(can.size() == 1 && can != "a")) {
+                //                 line += can;
+                //                 found = true;
+                //                 break;
+                //             }
+                //         }
+                //     }
+                // }
+                
+                if (!found) {
+                    line += words_candidates[0];
+                }
+             }
+         }
     }
 
     return line;
@@ -359,7 +405,7 @@ bool bfs(const image& img, pixel p, int line_num, int line_num_components, bool 
         line.crop();
         line.save("../out/line" + std::to_string(line_num) + ".png");
         if (line_num_components == -1 || line_num == line_num_components) {
-            auto line_text = get_components(line, line_num);
+            auto line_text = get_components(line, line_num, use_dictionary);
             if (use_dictionary) {
                 auto line_fixed = corrector.FixFragment(std::wstring(line_text.begin(), line_text.end()));
                 std::cout << std::string(line_fixed.begin(), line_fixed.end()) << std::endl;
