@@ -199,13 +199,17 @@ std::string get_components(const image& img, int line_num, bool use_dictionary)
     }
 
     int height_sum = 0;
+    int width_sum = 0;
     for (const auto& component : components) {
         height_sum += component.second.rows();
+        width_sum += component.second.cols();
     }
     double height_avg = (double)height_sum/(double)components.size();
+    double width_avg = (double)width_sum/(double)components.size();
 
     std::string line;
     int image_count = 0;
+    std::string default_word;
     std::vector<std::string> words_candidates(1,"");
 
     for (int i = 0; i < (int)components.size(); i++) {
@@ -218,6 +222,18 @@ std::string get_components(const image& img, int line_num, bool use_dictionary)
 
         std::vector<std::string> words_candidates_to_add;
         for (auto& word : words_candidates) {
+            std::string word_append;
+
+            if (!prediction.second.empty()) {
+                word_append = word + prediction.second;
+                words_candidates_to_add.push_back(word + prediction.first);
+            }
+            else {
+                word_append = word + prediction.first;
+            }
+
+            default_word = word + prediction.first;
+
             if (prediction.first == "l" && not_above_height_avg) {
                 words_candidates_to_add.push_back(word + "c");
                 words_candidates_to_add.push_back(word + "e");
@@ -228,27 +244,24 @@ std::string get_components(const image& img, int line_num, bool use_dictionary)
             if (prediction.first == "p" && not_above_height_avg) {
                 words_candidates_to_add.push_back(word + "e");
             }
-            if (!prediction.second.empty()) {
-                words_candidates_to_add.push_back(word + prediction.second);
-            }
 
-            word += prediction.first;
+            word = word_append;
         }
 
         for (auto& word : words_candidates_to_add) {
             words_candidates.push_back(std::move(word));
         }
-        // for (auto w : words_candidates) {
-        //     std::cout << w << std::endl;
-        // }
 
         if (i != (int)components.size()-1) {
             int this_diff = std::max(components[i+1].first.left() - components[i].first.right(), 0);
 
-            int prev_diff = (i > 0) ? std::max(components[i].first.left() - components[i-1].first.right(), 0) : 999999;
-            int next_diff = (i+2 < (int)components.size()) ?  std::max(components[i+2].first.left() - components[i+1].first.right(), 0) : 99999;
-            if (this_diff >= 1.5*prev_diff || this_diff >= 1.5*next_diff) {
-                if (this_diff >= 1.5*space_avg && this_diff >= 1.5*get_avg_neighbors(i,10, 1.5*space_avg)) {
+            int prev_diff = (i > 0) ? std::max(components[i].first.left() - components[i-1].first.right(), 0) : 1.5*space_avg;
+            int next_diff = (i+2 < (int)components.size()) ?  std::max(components[i+2].first.left() - components[i+1].first.right(), 0) : 1.5*space_avg;
+            if ((this_diff >= 1.5*prev_diff || this_diff >= 1.5*next_diff) && this_diff > 1.2*width_avg) {
+                if ((this_diff >= 1.5*space_avg || this_diff >= 1.5*get_avg_neighbors(i,10, 1.5*space_avg)) ||
+                    // try to detect a
+                    (this_diff >= 1.5*space_avg && prev_diff >= 1.5*space_avg)) {
+                    
                     if (words_candidates.size() == 1) {
                         line += words_candidates[0];
                     }
@@ -263,26 +276,7 @@ std::string get_components(const image& img, int line_num, bool use_dictionary)
                         }
 
                         if (!found) {
-                            // if (use_dictionary) {
-                            //     for (const auto& word : words_candidates) {
-                            //         if (found) {
-                            //             break;
-                            //         }
-                            //         auto candidates = corrector.GetCandidates({std::wstring(word.begin(), word.end())}, 0);
-                            //         for (const auto& can_w : candidates) {
-                            //             std::string can(can_w.begin(), can_w.end());
-                            //             if (dictionary.find(can) != dictionary.end() && !(can.size() == 1 && can != "a")) {
-                            //                 line += can;
-                            //                 found = true;
-                            //                 break;
-                            //             }
-                            //         }
-                            //     }
-                            // }
-
-                            if (!found) {
-                                line += words_candidates[0];
-                            }
+                            line += default_word;
                         }
                     }
 
@@ -300,6 +294,7 @@ std::string get_components(const image& img, int line_num, bool use_dictionary)
                     // }
 
                     line += " ";
+                    default_word.clear();
                     words_candidates.clear();
                     words_candidates.push_back("");
                 }
@@ -336,26 +331,7 @@ std::string get_components(const image& img, int line_num, bool use_dictionary)
              }
 
              if (!found) {
-                // if (use_dictionary) {
-                //     for (const auto& word : words_candidates) {
-                //         if (found) {
-                //             break;
-                //         }
-                //         auto candidates = corrector.GetCandidates({std::wstring(word.begin(), word.end())}, 0);
-                //         for (const auto& can_w : candidates) {
-                //             std::string can(can_w.begin(), can_w.end());
-                //             if (dictionary.find(can) != dictionary.end() && !(can.size() == 1 && can != "a")) {
-                //                 line += can;
-                //                 found = true;
-                //                 break;
-                //             }
-                //         }
-                //     }
-                // }
-                
-                if (!found) {
-                    line += words_candidates[0];
-                }
+                line += default_word;
              }
          }
     }
