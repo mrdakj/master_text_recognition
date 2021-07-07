@@ -65,13 +65,21 @@ struct pixel {
 
 struct borders {
     // [left, right) x [top, bottom)
-    borders(int left, int right, int top, int bottom)
+    borders(int left, int right, int top, int bottom, int dot_point = -1)
         : m_left(left)
         , m_right(right)
         , m_top(top)
         , m_bottom(bottom)
-        , m_dot_point(-1)
+        , m_dot_point(dot_point)
     {
+    }
+
+    bool operator==(const borders& other) const
+    {
+        return m_left == other.m_left &&
+               m_right == other.m_right &&
+               m_top == other.m_top &&
+               m_bottom == other.m_bottom;
     }
 
     void update(pixel p)

@@ -83,7 +83,8 @@ void glue(std::pair<borders,image>& component, std::pair<borders,image>& dot)
             std::min(component.first.left(), dot.first.left()),
             std::max(component.first.right(), dot.first.right()),
             dot.first.top(),
-            component.first.bottom());
+            component.first.bottom(),
+            component.first.dot_point());
 }
 
 std::string get_components(const image& img, int line_num, bool use_dictionary)
@@ -93,6 +94,7 @@ std::string get_components(const image& img, int line_num, bool use_dictionary)
     std::unordered_set<pixel, pixel::hash> visited;
     std::vector<std::pair<borders,image>> components;
     std::vector<std::pair<borders,image>> dots;
+    std::vector<std::pair<borders,image>> all_components;
 
 
     for (int j = 0; j < img.rows(); ++j) {
@@ -106,35 +108,76 @@ std::string get_components(const image& img, int line_num, bool use_dictionary)
                     im(pp.j - b.top(), pp.i - b.left()) = img(pp);
                 }
 
-                if (!is_dot(im)) {
-                    int min_j = 0;
-                    int max_j = 0;
-                    for (int j_pom = 0; j_pom < im.cols(); ++j_pom) {
-                        for (int i_half = 0; i_half < im.rows()/2; ++i_half) {
-                            if (im.check_color({i_half, j_pom}, Color::black)) {
-                                if (min_j == 0) {
-                                    min_j = j_pom;
-                                }
-                                max_j = j_pom;
+                int min_j = 0;
+                int max_j = 0;
+                for (int j_pom = 0; j_pom < im.cols(); ++j_pom) {
+                    for (int i_half = 0; i_half < im.rows()/2; ++i_half) {
+                        if (im.check_color({i_half, j_pom}, Color::black)) {
+                            if (min_j == 0) {
+                                min_j = j_pom;
                             }
+                            max_j = j_pom;
                         }
                     }
-
-                    int dot_point = b.left() + (min_j + max_j)/2;
-                    b.set_dot_point(dot_point);
-
-                    components.emplace_back(b, std::move(im));
                 }
-                else {
-                    dots.emplace_back(b, std::move(im));
+
+                int dot_point = b.left() + (min_j + max_j)/2;
+                b.set_dot_point(dot_point);
+
+                all_components.emplace_back(b, std::move(im));
+
+            }
+        }
+    }
+
+    for (auto component_pair : all_components) {
+
+        bool dot = false;
+
+        if (is_dot(component_pair.second)) {
+            dot = true;
+
+            int dot_middle = (component_pair.first.left() + component_pair.first.right()) / 2;
+            int min_distance = 999999;
+            int component_index = 0;
+
+            for (int component_i = 0; component_i < all_components.size(); ++component_i) {
+                auto& other_pair = all_components[component_i];
+                if (other_pair.first == component_pair.first) {
+                    continue;
+                }
+
+                int distance = std::abs(dot_middle - other_pair.first.dot_point());
+                if (distance < min_distance) {
+                    min_distance = distance;
+                    component_index = component_i;
                 }
             }
+
+            auto component_copy = all_components[component_index];
+            auto component_pair_copy = component_pair;
+
+            glue(component_copy, component_pair_copy);
+            auto prediction = recognize(component_copy.second);
+            if (prediction.first != "i" && prediction.first != "j") {
+                if (prediction.second.empty() || 
+                    (prediction.second[0] != 'i' && prediction.second[1] != 'i' &&
+                     prediction.second[0] != 'j' && prediction.second[1] != 'j')) {
+                    dot = false;
+                }
+            }
+        }
+
+        if (dot) {
+            dots.emplace_back(component_pair);
+        }
+        else {
+            components.emplace_back(component_pair);
         }
     }
 
     std::sort(components.begin(), components.end(), [](const auto& lhs, const auto& rhs) 
             { return (lhs.first.left() + lhs.first.right()) < (rhs.first.left() + rhs.first.right()); });
-
 
     for (auto& dot : dots) {
         int dot_middle = (dot.first.left() + dot.first.right()) / 2;
