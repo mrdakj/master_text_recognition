@@ -300,7 +300,7 @@ std::string get_components(const image& img, int line_num, bool use_dictionary)
 
             int prev_diff = (i > 0) ? std::max(components[i].first.left() - components[i-1].first.right(), 0) : 1.5*space_avg;
             int next_diff = (i+2 < (int)components.size()) ?  std::max(components[i+2].first.left() - components[i+1].first.right(), 0) : 1.5*space_avg;
-            if ((this_diff >= 1.5*prev_diff || this_diff >= 1.5*next_diff) && this_diff > 1.2*width_avg) {
+            if ((this_diff >= 1.5*prev_diff || this_diff >= 1.5*next_diff) && this_diff > 1.1*width_avg) {
                 if ((this_diff >= 1.5*space_avg || this_diff >= 1.5*get_avg_neighbors(i,10, 1.5*space_avg)) ||
                     // try to detect a
                     (this_diff >= 1.5*space_avg && prev_diff >= 1.5*space_avg)) {
