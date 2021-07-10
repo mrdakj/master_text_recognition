@@ -193,10 +193,19 @@ std::string get_components(const image& img, int line_num, bool use_dictionary)
         }
     }
 
+    int height_sum = 0;
+    int width_sum = 0;
+    for (const auto& component : components) {
+        height_sum += component.second.rows();
+        width_sum += component.second.cols();
+    }
+    double height_avg = (double)height_sum/(double)components.size();
+    double width_avg = (double)width_sum/(double)components.size();
+
     int space_sum = 0;
     std::vector<int> space_diff;
     for (int i = 0; i < (int)components.size()-1; i++) {
-        space_sum += std::max(components[i+1].first.left() - components[i].first.right(), 0);
+        space_sum += std::min((int)(3*width_avg), std::max(components[i+1].first.left() - components[i].first.right(), 0));
         space_diff.push_back(std::max(components[i+1].first.left() - components[i].first.right(), 0));
     }
 
@@ -241,14 +250,6 @@ std::string get_components(const image& img, int line_num, bool use_dictionary)
         space_avg = (double)space_sum/(double)(components.size()-1);
     }
 
-    int height_sum = 0;
-    int width_sum = 0;
-    for (const auto& component : components) {
-        height_sum += component.second.rows();
-        width_sum += component.second.cols();
-    }
-    double height_avg = (double)height_sum/(double)components.size();
-    double width_avg = (double)width_sum/(double)components.size();
 
     std::string line;
     int image_count = 0;
@@ -301,9 +302,7 @@ std::string get_components(const image& img, int line_num, bool use_dictionary)
             int prev_diff = (i > 0) ? std::max(components[i].first.left() - components[i-1].first.right(), 0) : 1.5*space_avg;
             int next_diff = (i+2 < (int)components.size()) ?  std::max(components[i+2].first.left() - components[i+1].first.right(), 0) : 1.5*space_avg;
             if ((this_diff >= 1.5*prev_diff || this_diff >= 1.5*next_diff) && this_diff > 1.1*width_avg) {
-                if ((this_diff >= 1.5*space_avg || this_diff >= 1.5*get_avg_neighbors(i,10, 1.5*space_avg)) ||
-                    // try to detect a
-                    (this_diff >= 1.5*space_avg && prev_diff >= 1.5*space_avg)) {
+                if (this_diff >= 1.5*space_avg || this_diff >= 1.5*get_avg_neighbors(i,10, 1.5*space_avg)) {
                     
                     if (words_candidates.size() == 1) {
                         line += words_candidates[0];
