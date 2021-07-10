@@ -209,42 +209,6 @@ std::string get_components(const image& img, int line_num, bool use_dictionary)
         space_diff.push_back(std::max(components[i+1].first.left() - components[i].first.right(), 0));
     }
 
-    auto get_avg_neighbors = [&](int i, int n, double space_size_heuristics) {
-        int sum = space_diff[i];
-        int current = 1;
-        int taken = 0;
-        bool stop = false;
-        while (taken < n && !stop) {
-            stop = true;
-
-            if (i+current < space_diff.size()) {
-                sum += space_diff[i+current];
-                stop = false;
-                ++taken;
-            }
-            else if (i+current == space_diff.size()) {
-                sum += space_size_heuristics;
-                stop = false;
-                ++taken;
-            }
-
-            if (i-current >= 0) {
-                sum += space_diff[i-current];
-                stop = false;
-                ++taken;
-            }
-            else if (i-current == -1) {
-                sum += space_size_heuristics;
-                stop = false;
-                ++taken;
-            }
-
-            ++current;
-        }
-
-        return (double)sum/(taken+1);
-    };
-
     double space_avg = 0;
     if (components.size() > 1) {
         space_avg = (double)space_sum/(double)(components.size()-1);
@@ -301,45 +265,42 @@ std::string get_components(const image& img, int line_num, bool use_dictionary)
 
             int prev_diff = (i > 0) ? std::max(components[i].first.left() - components[i-1].first.right(), 0) : 1.5*space_avg;
             int next_diff = (i+2 < (int)components.size()) ?  std::max(components[i+2].first.left() - components[i+1].first.right(), 0) : 1.5*space_avg;
-            if ((this_diff >= 1.5*prev_diff || this_diff >= 1.5*next_diff) && this_diff > 1.1*width_avg) {
-                if (this_diff >= 1.5*space_avg || this_diff >= 1.5*get_avg_neighbors(i,10, 1.5*space_avg)) {
-                    
-                    if (words_candidates.size() == 1) {
-                        line += words_candidates[0];
-                    }
-                    else {
-                        bool found = false;
-                        for (const auto& word : words_candidates) {
-                            if (dictionary.find(word) != dictionary.end() && !(word.size() == 1 && word != "a")) {
-                                line += word;
-                                found = true;
-                                break;
-                            }
-                        }
-
-                        if (!found) {
-                            line += default_word;
-                        }
-                    }
-
-                    // if (words_candidates.size() > 1) {
-                    //     line += "{";
-                    // }
-                    // for (int w = 0; w < words_candidates.size(); w++) {
-                    //     line +=  words_candidates[w];
-                    //     if (w != words_candidates.size()-1) {
-                    //         line += ",";
-                    //     }
-                    // }
-                    // if (words_candidates.size() > 1) {
-                    //     line += "}";
-                    // }
-
-                    line += " ";
-                    default_word.clear();
-                    words_candidates.clear();
-                    words_candidates.push_back("");
+            if ((this_diff >= 1.5*prev_diff || this_diff >= 1.5*next_diff) && this_diff > 1.1*width_avg && this_diff >= 1.5*space_avg) {
+                if (words_candidates.size() == 1) {
+                    line += words_candidates[0];
                 }
+                else {
+                    bool found = false;
+                    for (const auto& word : words_candidates) {
+                        if (dictionary.find(word) != dictionary.end() && !(word.size() == 1 && word != "a")) {
+                            line += word;
+                            found = true;
+                            break;
+                        }
+                    }
+
+                    if (!found) {
+                        line += default_word;
+                    }
+                }
+
+                // if (words_candidates.size() > 1) {
+                //     line += "{";
+                // }
+                // for (int w = 0; w < words_candidates.size(); w++) {
+                //     line +=  words_candidates[w];
+                //     if (w != words_candidates.size()-1) {
+                //         line += ",";
+                //     }
+                // }
+                // if (words_candidates.size() > 1) {
+                //     line += "}";
+                // }
+
+                line += " ";
+                default_word.clear();
+                words_candidates.clear();
+                words_candidates.push_back("");
             }
         }
     }
