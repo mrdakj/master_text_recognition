@@ -1,0 +1,4 @@
+informally an algorithm is any well definmed computational procedure
+that takes some value or set of values as pnput and produces some output
+an ayoeithm is thus a sequence of computational steps that
+transform the input into the output

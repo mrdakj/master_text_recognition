@@ -89,7 +89,7 @@ void glue(std::pair<borders,image>& component, std::pair<borders,image>& dot)
 
 std::string get_components(const image& img, int line_num, bool use_dictionary)
 {
-    fs::create_directory("../out/" + std::to_string(line_num));
+    // fs::create_directory("../out/" + std::to_string(line_num));
 
     std::unordered_set<pixel, pixel::hash> visited;
     std::vector<std::pair<borders,image>> components;
@@ -203,10 +203,8 @@ std::string get_components(const image& img, int line_num, bool use_dictionary)
     double width_avg = (double)width_sum/(double)components.size();
 
     int space_sum = 0;
-    std::vector<int> space_diff;
     for (int i = 0; i < (int)components.size()-1; i++) {
         space_sum += std::min((int)(3*width_avg), std::max(components[i+1].first.left() - components[i].first.right(), 0));
-        space_diff.push_back(std::max(components[i+1].first.left() - components[i].first.right(), 0));
     }
 
     double space_avg = 0;
@@ -221,7 +219,7 @@ std::string get_components(const image& img, int line_num, bool use_dictionary)
     std::vector<std::string> words_candidates(1,"");
 
     for (int i = 0; i < (int)components.size(); i++) {
-        components[i].second.save("../out/" + std::to_string(line_num) + "/" + std::to_string(image_count) + ".png");
+        // components[i].second.save("../out/" + std::to_string(line_num) + "/" + std::to_string(image_count) + ".png");
         ++image_count;
 
         bool not_above_height_avg = components[i].second.rows() <= height_avg;
@@ -261,10 +259,10 @@ std::string get_components(const image& img, int line_num, bool use_dictionary)
         }
 
         if (i != (int)components.size()-1) {
-            int this_diff = std::max(components[i+1].first.left() - components[i].first.right(), 0);
+            int this_diff = std::min((int)(3*width_avg), std::max(components[i+1].first.left() - components[i].first.right(), 0));
 
-            int prev_diff = (i > 0) ? std::max(components[i].first.left() - components[i-1].first.right(), 0) : 1.5*space_avg;
-            int next_diff = (i+2 < (int)components.size()) ?  std::max(components[i+2].first.left() - components[i+1].first.right(), 0) : 1.5*space_avg;
+            int prev_diff = (i > 0) ? std::min((int)(3*width_avg), std::max(components[i].first.left() - components[i-1].first.right(), 0)) : 1.5*space_avg;
+            int next_diff = (i+2 < (int)components.size()) ?  std::min((int)(3*width_avg), std::max(components[i+2].first.left() - components[i+1].first.right(), 0)) : 1.5*space_avg;
             if ((this_diff >= 1.5*prev_diff || this_diff >= 1.5*next_diff) && this_diff > 1.1*width_avg && this_diff >= 1.5*space_avg) {
                 if (words_candidates.size() == 1) {
                     line += words_candidates[0];
@@ -342,7 +340,7 @@ std::string get_components(const image& img, int line_num, bool use_dictionary)
     return line;
 }
 
-bool bfs(const image& img, pixel p, int line_num, int line_num_components, bool use_dictionary)
+bool bfs(const image& img, pixel p, int line_num, int line_num_components, bool use_dictionary, std::ofstream & out_file)
 {
     std::unordered_set<pixel, pixel::hash> visited;
     std::queue<pixel> q;
@@ -382,15 +380,17 @@ bool bfs(const image& img, pixel p, int line_num, int line_num_components, bool 
             line(pp.j - b.top(), pp.i - b.left()) = img(pp);
         }
         line.crop();
-        line.save("../out/line" + std::to_string(line_num) + ".png");
+        // line.save("../out/line" + std::to_string(line_num) + ".png");
         if (line_num_components == -1 || line_num == line_num_components) {
             auto line_text = get_components(line, line_num, use_dictionary);
             if (use_dictionary) {
                 auto line_fixed = corrector.FixFragment(std::wstring(line_text.begin(), line_text.end()));
                 std::cout << std::string(line_fixed.begin(), line_fixed.end()) << std::endl;
+                out_file << std::string(line_fixed.begin(), line_fixed.end()) << std::endl;
             }
             else {
                 std::cout << line_text << std::endl;
+                out_file << line_text << std::endl;
             }
         }
         return true;
@@ -399,12 +399,12 @@ bool bfs(const image& img, pixel p, int line_num, int line_num_components, bool 
     return false;
 }
 
-void bfs(const image& img, int line_num_components, bool use_dictionary)
+void bfs(const image& img, int line_num_components, bool use_dictionary, std::ofstream & out_file)
 {
     int line_num = 0;
     for (int j = 1; j < img.rows(); ++j) {
         if (j == 1 || img.check_color({j-1,0}, Color::gray)) {
-            if (bfs(img, {j,0}, line_num, line_num_components, use_dictionary)) {
+            if (bfs(img, {j,0}, line_num, line_num_components, use_dictionary, out_file)) {
                 ++line_num;
             }
         }
@@ -413,6 +413,8 @@ void bfs(const image& img, int line_num_components, bool use_dictionary)
 
 void process_image(const fs::path& img_name, int line_num_components, bool use_dictionary)
 {
+    std::ofstream out_file("../out/" + img_name.stem().string() + ((use_dictionary) ? "_dictionary.txt" : ".txt"));
+
     std::cout << img_name << std::endl;
     try {
         image img(img_name);
@@ -423,8 +425,8 @@ void process_image(const fs::path& img_name, int line_num_components, bool use_d
         auto strips_contour_original = s.concatenate_strips_with_lines(true);
         auto result_image = s.result();
 
-        result_image.save(std::string("../out/") + std::string(img_name.filename()));
-        bfs(result_image, line_num_components, use_dictionary);
+        // result_image.save(std::string("../out/") + std::string(img_name.filename()));
+        bfs(result_image, line_num_components, use_dictionary, out_file);
     } 
     catch (std::exception& ex) {
         std::cerr << ex.what() << std::endl;
@@ -447,34 +449,42 @@ std::pair<std::string, std::string> recognize(image& component)
 
 int main(int argc, char** argv) {
     if (argc < 2) {
-        std::cout << "./keras2cpp path_to_img [line_num_components] [dictionary]" << std::endl;
+        std::cout << "./keras2cpp path_to_img [dictionary]" << std::endl;
         return -1;
     }
 
-    if (fs::exists("../out")) {
-        fs::remove_all("../out");
-    }
+    // if (fs::exists("../out")) {
+    //     fs::remove_all("../out");
+    // }
     fs::create_directory("../out");
 
-    int line_num_components = -1;
-    bool use_dictionary = false;
-
-    for (int i = 2; i < argc; ++i) {
-        if (std::string(argv[i]) == "dictionary") {
-            use_dictionary = true;
-        }
-        else {
-            line_num_components = std::stoi(argv[i]);
-        }
-    }
-
-    if (use_dictionary) {
+    if (fs::is_directory(argv[1])) {
         corrector.LoadLangModel("../model/en.bin");
         std::cout << "model loaded" << std::endl;
-    }
+        load_dictionary();
 
-    load_dictionary();
-    process_image(argv[1], line_num_components, use_dictionary);
+        for (auto it = fs::directory_iterator(argv[1]); it != fs::directory_iterator(); ++it) {
+            if (fs::path(*it).extension() == ".png") {
+                process_image(*it, -1, false);
+                process_image(*it, -1, true);
+            }
+        }
+    }
+    else {
+        bool use_dictionary = false;
+
+        if (argc == 3 && std::string(argv[2]) == "dictionary") {
+            use_dictionary = true;
+        }
+
+        if (use_dictionary) {
+            corrector.LoadLangModel("../model/en.bin");
+            std::cout << "model loaded" << std::endl;
+        }
+
+        load_dictionary();
+        process_image(argv[1], -1, use_dictionary);
+    }
 
     return 0;
 }

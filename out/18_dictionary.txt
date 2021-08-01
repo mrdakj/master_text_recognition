@@ -1,0 +1,3 @@
+for example if you build an email
+app with an activity for a
+composing a new email

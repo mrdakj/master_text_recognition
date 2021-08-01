@@ -1,0 +1,2 @@
+this is some text with letter i
+and without letter j

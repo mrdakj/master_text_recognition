@@ -1,0 +1,6 @@
+in this section we are going to represent how a programme works
+we first do line segmentation
+then we get components paying attention to letters i and j
+and we do letters recognition
+we are also able to recognize bigrams
+bagram is a combination of two letters

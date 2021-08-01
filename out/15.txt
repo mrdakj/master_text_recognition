@@ -1,0 +1,7 @@
+in the first chapter we described algorithm for line segmentation
+later in the next chapter we introduced four models
+the first model classifies english letters
+the second and the third model are used to classify two combined letters
+while the last model helps us to determine which model to use
+in this chapter we are goiny to put everythiny together and to
+build a program that will be able to recodnize this text
