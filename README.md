@@ -1,3 +1,17 @@
+# Usage
+```
+mkdir build
+cd build
+cmake ..
+cmake --build .
+# recognize specific image
+./main path_to_img [dictionary] [debug] 
+# example
+./main ../images/1.png dictionary debug 
+# recognize all images
+./main ../images
+```
+
 Used: https://github.com/bakwc/JamSpell  
 
 Used: https://github.com/Dobiasd/frugally-deep
