@@ -24,7 +24,7 @@ image::image(cv::Mat data)
 
 fdeep::tensor image::get_tensor(float low, float high) const
 {
-    assert(m_data.isContinuous());
+    // assert(m_data.isContinuous());
     // Use the correct scaling, i.e., low and high
     return fdeep::tensor_from_bytes(m_data.ptr(),
         static_cast<std::size_t>(m_data.rows),

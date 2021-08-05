@@ -194,9 +194,9 @@ private:
         auto prediction = recognize(nearest_component_copy.second);
 
         return  // merged component is i
-                prediction.first == "i" || 
+                prediction.first == 'i' || 
                 // merged component is j
-                prediction.first == "j" ||
+                prediction.first == 'j' ||
                 // merged component is bigram that contains i or j
                 (!prediction.second.empty() &&
                 (prediction.second[0] == 'i' || prediction.second[1] == 'i' ||
@@ -290,11 +290,10 @@ private:
         return std::nullopt;
     }
 
-    void update_candidates_and_default_word(std::vector<std::string> & word_candidates, std::string & default_word, image& component, double height_avg) const
+    void update_candidates_and_default_word(std::vector<std::string> & word_candidates, std::string & default_word, const std::pair<char, std::string> & prediction, char prediction_first, char prediction_second, bool above_avg_height) const
     {
         // update word candidates and default word with new letter(s)
-        bool above_avg_height = component.rows() > height_avg;
-        auto prediction = recognize(component);
+        default_word = default_word + std::string(1, prediction.first);
 
         std::vector<std::string> words_candidates_to_add;
         for (auto& word : word_candidates) {
@@ -302,23 +301,30 @@ private:
 
             if (!prediction.second.empty()) {
                 word_append = word + prediction.second;
-                words_candidates_to_add.push_back(word + prediction.first);
+                words_candidates_to_add.push_back(word + std::string(1, prediction.first));
             }
             else {
-                word_append = word + prediction.first;
+                word_append = word + std::string(1, prediction.first);
             }
 
-            default_word = word + prediction.first;
 
-            if (prediction.first == "l" && !above_avg_height) {
+            if (prediction.first == 'l' && !above_avg_height) {
                 words_candidates_to_add.push_back(word + "c");
                 words_candidates_to_add.push_back(word + "e");
             }
-            if (prediction.first == "j" && !above_avg_height) {
+            if (prediction.first == 'j' && !above_avg_height) {
                 words_candidates_to_add.push_back(word + "i");
             }
-            if (prediction.first == "p" && !above_avg_height) {
+            if (prediction.first == 'p' && !above_avg_height) {
                 words_candidates_to_add.push_back(word + "e");
+            }
+
+            if (prediction_first != ' ') {
+                words_candidates_to_add.push_back(word + std::string(1, prediction_first));
+            }
+
+            if (prediction_second != ' ') {
+                words_candidates_to_add.push_back(word + std::string(1, prediction_second));
             }
 
             word = word_append;
@@ -429,15 +435,43 @@ private:
         std::string default_word;
         std::vector<std::string> words_candidates = {""};
 
+        // word_ends[i] is true iff the ith component is the end of a word
+        std::vector<bool> word_ends;
+        // predictions[i] is (one letter prediction, two letters prediction) of the ith component
+        std::vector<std::pair<char, std::string>> predictions;
+        // predictions_first[i] is a prediction of the component[i] got by model used to predict the first bigram letter
+        std::vector<char> predictions_first(components.size(), ' ');
+        // predictions_second[i] is a prediction of the component[i] got by model used to predict the second bigram letter
+        std::vector<char> predictions_second(components.size(), ' ');
+
+        for (int i = 0; i < (int)components.size(); ++i) {
+            predictions.emplace_back(recognize(components[i].second));
+            word_ends.emplace_back(is_word_end(i));
+        }
+
+        for (int i = 0; i < (int)components.size() - 1; ++i) {
+            if (!word_ends[i]) {
+                auto merged = merge(components[i], components[i+1], predictions[i].first, predictions[i+1].first);
+                if (merged) {
+                    auto prediction = recognize(*merged, true);
+                    predictions_first[i] = prediction.second[0];
+                    predictions_second[i+1] = prediction.second[1];
+                    // std::cout << prediction.second << std::endl;
+                    // merged->show();
+                    // cv::waitKey(0);
+                }
+            }
+        }
+
         for (int i = 0; i < (int)components.size(); ++i) {
             if (m_debug) {
                 components[i].second.save(m_debug_output_tmp / std::to_string(line_num) / (std::to_string(image_count) + ".png"));
                 ++image_count;
             }
 
-            update_candidates_and_default_word(words_candidates, default_word, components[i].second, height_avg);
+            update_candidates_and_default_word(words_candidates, default_word, predictions[i], predictions_first[i], predictions_second[i], components[i].second.rows() > height_avg);
 
-            if (i == (int)components.size()-1 || is_word_end(i)) {
+            if (i == (int)components.size()-1 || word_ends[i]) {
                 auto selected_word = select_word(words_candidates);
                 line += (selected_word) ? *selected_word : default_word;
 
@@ -537,14 +571,20 @@ private:
         }
     }
 
-    std::pair<std::string, std::string> recognize(image& component) const
+    std::pair<char, std::string> recognize(image component, bool merged = false) const
     {
         // if model classifies component as one letter, return only one letter prediction
         // if model classifies component as two letters, return one letter prediction and two letters prediction
+        // if merged is true than we are only interested in bigram prediction
         component.resize(28,28);
         auto t = component.get_tensor(0,1);
+
+        if (merged) {
+            return {' ', std::string(1, char(m_models.model_first.predict_class({t}) + 97)) + std::string(1, char(m_models.model_second.predict_class({t}) + 97))};
+        }
+
         // one letter prediction
-        std::string character =  std::string(1, char(m_models.model_one.predict_class({t}) + 97));
+        char character =  char(m_models.model_one.predict_class({t}) + 97);
 
         if (m_models.model_one_two.predict_class({t}) == 1) {
             // two letters case
@@ -555,6 +595,128 @@ private:
         }
 
         return {character, ""};
+    }
+
+    std::optional<image> merge(const t_component& img_a, const t_component& img_b, char label_a, char label_b) const
+    {
+        // merge images a and b into ab
+        int expected_number_of_components = 0;
+        if (label_a != 'i' && label_a != 'j') {
+            if (label_b != 'i' && label_b != 'j') {
+                expected_number_of_components = 1;
+            }
+            else {
+                expected_number_of_components = 2;
+            }
+        }
+        else {
+            if (label_b != 'i' && label_b != 'j') {
+                expected_number_of_components = 2;
+            }
+            else {
+                expected_number_of_components = 3;
+            }
+        }
+
+        int step = 0;
+        int offset_a = std::max(0, img_b.first.bottom() - img_a.first.bottom());
+        int offset_b = std::max(0, img_a.first.bottom() - img_b.first.bottom());
+
+        while (true) {
+            auto result = merge(img_a.second, img_b.second, step, offset_a, offset_b);
+            step += 1;
+            if (step>=img_a.second.rows() || result.cols() - step < 0) {
+                return std::nullopt;
+            }
+
+            if (number_of_components_expected(result, expected_number_of_components)) {
+                result = merge(img_a.second, img_b.second, step+1, offset_a, offset_b);
+                return std::optional<image>(result);
+            }
+        }
+
+        return std::nullopt;
+    }
+
+    image merge(const image& img_a, const image& img_b, int step, int offset_a, int offset_b) const
+    {
+        image result(std::max(img_a.rows()+offset_a, img_b.rows()+offset_b), img_a.cols()+img_b.cols());
+
+        int current_result_j = result.rows()-1;
+        for (int j = img_a.rows()-1; j >= 0; --j) {
+            for (int i = 0; i < img_a.cols(); ++i) {
+                result(current_result_j-offset_a, i) = img_a(j,i);
+            }
+            --current_result_j;
+        }
+
+        current_result_j = result.rows()-1;
+        for (int j = img_b.rows()-1; j >= 0 ; --j) {
+            for (int i = 0; i < img_b.cols(); ++i) {
+                pixel p{current_result_j-offset_b, i+img_a.cols()-step};
+                if (result.check_color(p, Color::white)) {
+                    result(p) = img_b(j,i);
+                }
+            }
+            --current_result_j;
+        }
+
+        result.crop();
+        return result;
+    }
+
+    bool number_of_components_expected(const image& img, int expected_number_of_components) const
+    {
+        // check if the number of components in the image is expected
+        int result = 0;
+        std::unordered_set<pixel, pixel::hash> visited;
+
+        for (int j = 0; j < img.rows(); ++j) {
+            for (int i = 0; i < img.cols(); ++i) {
+                pixel p{j,i};
+                // if pixel is black and not yet visited
+                if (img.check_color(p, Color::black)) {
+                    if (visited.find(p) == visited.cend()) {
+                        ++result;
+                        if (result > expected_number_of_components) {
+                            return false;
+                        }
+                        bfs_update_visited(img, p, visited);
+                    }
+                }
+            }
+        }
+
+        return result == expected_number_of_components;
+    }
+
+    void bfs_update_visited(const image& img, pixel p, std::unordered_set<pixel, pixel::hash>& visited) const
+    {
+        std::queue<pixel> q;
+        q.push(p);
+        visited.insert(p);
+
+        // left, right, top, bottm
+        borders b{p.i, p.i, p.j, p.j};
+
+        while (!q.empty()) {
+            auto current_pixel = q.front();
+            q.pop();
+
+            for (int dj : {-1, 0, 1}) {
+                for (int di : {-1, 0, 1}) {
+                    if (std::abs(dj) == std::abs(di)) {
+                        continue;
+                    }
+                    pixel neighbour{current_pixel.j+dj, current_pixel.i+di};
+                    // if neighbour is black and not yet visited
+                    if (img.check_color(neighbour, Color::black) && visited.find(neighbour) == visited.cend()) {
+                        q.push(neighbour);
+                        visited.insert(neighbour);
+                    }
+                }
+            }
+        }
     }
 
 private:

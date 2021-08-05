@@ -1,4 +1,4 @@
-docker is a set of platform as a seevice produjs
+docker is a set of platform as a service produjs
 that use os level virtualization to deliver software
 in packages called containers
 containers are isolated from one another and bundle their software
