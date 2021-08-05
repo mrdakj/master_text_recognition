@@ -307,6 +307,13 @@ private:
                 word_append = word + std::string(1, prediction.first);
             }
 
+            if (prediction_first != ' ') {
+                words_candidates_to_add.push_back(word + std::string(1, prediction_first));
+            }
+
+            if (prediction_second != ' ') {
+                words_candidates_to_add.push_back(word + std::string(1, prediction_second));
+            }
 
             if (prediction.first == 'l' && !above_avg_height) {
                 words_candidates_to_add.push_back(word + "c");
@@ -317,14 +324,6 @@ private:
             }
             if (prediction.first == 'p' && !above_avg_height) {
                 words_candidates_to_add.push_back(word + "e");
-            }
-
-            if (prediction_first != ' ') {
-                words_candidates_to_add.push_back(word + std::string(1, prediction_first));
-            }
-
-            if (prediction_second != ' ') {
-                words_candidates_to_add.push_back(word + std::string(1, prediction_second));
             }
 
             word = word_append;
