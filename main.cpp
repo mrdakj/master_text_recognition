@@ -36,9 +36,31 @@ struct recognition_models {
     const fdeep::model model_second;
 };
 
-class image_recognizer {
-    typedef std::pair<borders,image> t_component;
+struct Component {
+    Component(image img, borders bounding_box, int dot_point, bool is_bigram = false)
+        : img(std::move(img))
+        , bounding_box(std::move(bounding_box))
+        , dot_point(dot_point)
+        , is_bigram(is_bigram)
+        , one_letter(' ')
+        , bigram({' ', ' '})
+        , first(' ')
+        , second(' ')
+    {
+    }
 
+    image img;
+    borders bounding_box;
+    // dot point is the middle (horizontal) point of the upper half part of the component
+    int dot_point;
+    bool is_bigram;
+    char one_letter;
+    std::pair<char, char> bigram;
+    char first;
+    char second;
+};
+
+class image_recognizer {
 public:
     image_recognizer(bool use_dictionary = true, bool debug = false)
         : m_dictionary(get_dictionary())
@@ -158,101 +180,87 @@ private:
         return {black, b};
     }
 
-    bool is_dot_candidate(const image& img) const
+    bool is_dot(const Component& component, const std::vector<Component> & all_components) const
     {
-        return img.rows() < 20 && img.cols() < 20;
-    }
+        if (!(component.img.rows() < 20 && component.img.cols() < 20)) return false;
 
-    bool is_dot(const t_component& component, const std::vector<t_component> & all_components) const
-    {
-        if (!is_dot_candidate(component.second)) return false;
-
-        int dot_middle = (component.first.left() + component.first.right()) / 2;
+        int dot_middle = (component.bounding_box.left() + component.bounding_box.right()) / 2;
         int min_distance = std::numeric_limits<int>::max();
         int component_index = 0;
 
         // find the nearest component according to horizontal distance
         for (int component_i = 0; component_i < all_components.size(); ++component_i) {
             auto& other_pair = all_components[component_i];
-            if (other_pair.first == component.first) {
+            if (other_pair.bounding_box == component.bounding_box) {
                 continue;
             }
 
-            int distance = std::abs(dot_middle - other_pair.first.dot_point());
+            int distance = std::abs(dot_middle - other_pair.dot_point);
             if (distance < min_distance) {
                 min_distance = distance;
                 component_index = component_i;
             }
         }
 
-        // copy the component and the nearest component so we can glue them together
-        auto nearest_component_copy = all_components[component_index];
-        auto component_copy = component;
         // add component (potential dot) to the top of the nearest component (potential part of letter i or j)
-        glue(nearest_component_copy, component_copy);
+        auto glued_img = glue(all_components[component_index], component);
+        recognize(glued_img);
 
-        auto prediction = recognize(nearest_component_copy.second);
-
-        return  // merged component is i
-                prediction.first == 'i' || 
-                // merged component is j
-                prediction.first == 'j' ||
+        return  // merged component is i or j
+                glued_img.one_letter == 'i' || 
+                glued_img.one_letter == 'j' ||
                 // merged component is bigram that contains i or j
-                (!prediction.second.empty() &&
-                (prediction.second[0] == 'i' || prediction.second[1] == 'i' ||
-                 prediction.second[0] == 'j' || prediction.second[1] == 'j'));
+                glued_img.bigram.first == 'i' || 
+                glued_img.bigram.second == 'i' ||
+                glued_img.bigram.first == 'j' ||
+                glued_img.bigram.second == 'j';
     }
 
-    std::pair<std::vector<t_component>, std::vector<t_component>> get_components_and_dots(const std::vector<t_component> & all_components) const
+    std::pair<std::vector<Component>, std::vector<Component>> get_components_and_dots(const std::vector<Component> & all_components) const
     {
         // separate all components into dots and non-dot components
-        std::vector<t_component> components;
-        std::vector<t_component> dots;
+        std::vector<Component> components;
+        std::vector<Component> dots;
 
         for (auto component : all_components) {
             if (is_dot(component, all_components)) {
-                dots.emplace_back(component);
+                dots.emplace_back(std::move(component));
             }
             else {
-                components.emplace_back(component);
+                components.emplace_back(std::move(component));
             }
         }
 
         return {components, dots};
     }
 
-    void glue(t_component & component, t_component & dot) const
+    Component glue(Component component, Component dot) const
     {
-        component.second.add_border(Direction::right, dot.first.right() - component.first.right());
-        component.second.add_border(Direction::left, component.first.left() - dot.first.left());
-        dot.second.add_border(Direction::right,  component.first.right() - dot.first.right());
-        dot.second.add_border(Direction::left,  dot.first.left() - component.first.left());
+        component.img.add_border(Direction::right, dot.bounding_box.right() - component.bounding_box.right());
+        component.img.add_border(Direction::left, component.bounding_box.left() - dot.bounding_box.left());
+        dot.img.add_border(Direction::right,  component.bounding_box.right() - dot.bounding_box.right());
+        dot.img.add_border(Direction::left,  dot.bounding_box.left() - component.bounding_box.left());
+        component.img.add_border(Direction::up, component.bounding_box.top() - dot.bounding_box.bottom());
 
-        component.second.add_border(Direction::up, component.first.top() - dot.first.bottom());
-
-        component.second = component.second.concatenate_horizontal(dot.second);
+        auto concatenated_img = component.img.concatenate_horizontal(dot.img);
 
         // update borders of the new component
-        component.first = borders(
-                // left
-                std::min(component.first.left(), dot.first.left()),
-                // right
-                std::max(component.first.right(), dot.first.right()),
-                // top
-                dot.first.top(),
-                // bottom
-                component.first.bottom(),
-                // dot point
-                component.first.dot_point());
+        auto box = borders(
+                std::min(component.bounding_box.left(), dot.bounding_box.left()),
+                std::max(component.bounding_box.right(), dot.bounding_box.right()),
+                dot.bounding_box.top(),
+                component.bounding_box.bottom());
+
+        return Component(std::move(concatenated_img), std::move(box), component.dot_point);
     }
 
-    std::pair<double, double> get_avg_width_height(const std::vector<t_component>& components) const
+    std::pair<double, double> get_avg_width_height(const std::vector<Component>& components) const
     {
         int height_sum = 0;
         int width_sum = 0;
         for (const auto& component : components) {
-            height_sum += component.second.rows();
-            width_sum += component.second.cols();
+            height_sum += component.img.rows();
+            width_sum += component.img.cols();
         }
         double height_avg = (double)height_sum/(double)components.size();
         double width_avg = (double)width_sum/(double)components.size();
@@ -260,13 +268,13 @@ private:
         return {width_avg, height_avg};
     }
 
-    std::pair<int, double> get_space_sum_and_avg(const std::vector<t_component>& components, double width_avg) const
+    std::pair<int, double> get_space_sum_and_avg(const std::vector<Component>& components, double width_avg) const
     {
         int space_sum = 0;
         for (int i = 0; i < (int)components.size()-1; ++i) {
             // space should be in interval [0, 3*average width]
             space_sum += std::min((int)(3*width_avg), 
-                                   std::max(components[i+1].first.left() - components[i].first.right(), 0));
+                                   std::max(components[i+1].bounding_box.left() - components[i].bounding_box.right(), 0));
         }
 
         double space_avg = 0;
@@ -290,73 +298,74 @@ private:
         return std::nullopt;
     }
 
-    void update_candidates_and_default_word(std::vector<std::string> & word_candidates, std::string & default_word, const std::pair<char, std::string> & prediction, char prediction_first, char prediction_second, bool above_avg_height) const
+    void update_candidates_and_default_word(std::vector<std::string> & word_candidates, std::string & default_word, const Component & component, bool above_avg_height) const
     {
         // update word candidates and default word with new letter(s)
-        default_word = default_word + std::string(1, prediction.first);
+        default_word += component.one_letter;
 
         std::vector<std::string> words_candidates_to_add;
         for (auto& word : word_candidates) {
-            std::string word_append;
+            std::string word_append = word;
 
-            if (!prediction.second.empty()) {
-                word_append = word + prediction.second;
-                words_candidates_to_add.push_back(word + std::string(1, prediction.first));
+            if (component.is_bigram) {
+                word_append += component.bigram.first;
+                word_append += component.bigram.second;
+                words_candidates_to_add.emplace_back(word + std::string(1, component.one_letter));
             }
             else {
-                word_append = word + std::string(1, prediction.first);
+                word_append += component.one_letter;
             }
 
-            if (prediction_first != ' ') {
-                words_candidates_to_add.push_back(word + std::string(1, prediction_first));
+            if (component.first != ' ') {
+                words_candidates_to_add.emplace_back(word + std::string(1, component.first));
             }
 
-            if (prediction_second != ' ') {
-                words_candidates_to_add.push_back(word + std::string(1, prediction_second));
+            if (component.second != ' ') {
+                words_candidates_to_add.emplace_back(word + std::string(1, component.second));
             }
 
-            if (prediction.first == 'l' && !above_avg_height) {
-                words_candidates_to_add.push_back(word + "c");
-                words_candidates_to_add.push_back(word + "e");
+            if (component.one_letter == 'l' && !above_avg_height) {
+                words_candidates_to_add.emplace_back(word + "c");
+                words_candidates_to_add.emplace_back(word + "e");
             }
-            if (prediction.first == 'j' && !above_avg_height) {
-                words_candidates_to_add.push_back(word + "i");
+            if (component.one_letter == 'j' && !above_avg_height) {
+                words_candidates_to_add.emplace_back(word + "i");
             }
-            if (prediction.first == 'p' && !above_avg_height) {
-                words_candidates_to_add.push_back(word + "e");
+            if (component.one_letter == 'p' && !above_avg_height) {
+                words_candidates_to_add.emplace_back(word + "e");
             }
 
-            word = word_append;
+            word = std::move(word_append);
         }
 
         for (auto& word : words_candidates_to_add) {
-            word_candidates.push_back(std::move(word));
+            word_candidates.emplace_back(std::move(word));
         }
     }
 
-    void merge_dots_and_components(std::vector<t_component> & dots, std::vector<t_component> & components) const
+    void merge_dots_and_components(std::vector<Component> & dots, std::vector<Component> & components) const
     {
         for (auto& dot : dots) {
-            int dot_middle = (dot.first.left() + dot.first.right()) / 2;
+            int dot_middle = (dot.bounding_box.left() + dot.bounding_box.right()) / 2;
             auto component = std::min_element(components.begin(), components.end(), [&](auto const& lhs, auto const& rhs){
-                    return std::abs(dot_middle - lhs.first.dot_point()) < std::abs(dot_middle - rhs.first.dot_point());
+                    return std::abs(dot_middle - lhs.dot_point) < std::abs(dot_middle - rhs.dot_point);
             });
 
             // add dot to the top of the component
-            glue(*component, dot);
+            *component = glue(std::move(*component), std::move(dot));
         }
     }
 
-    void sort_components(std::vector<t_component> & components) const
+    void sort_components(std::vector<Component> & components) const
     {
         std::sort(components.begin(), components.end(), [](const auto& lhs, const auto& rhs) {
-                return lhs.first.dot_point() < rhs.first.dot_point();
+                return lhs.dot_point < rhs.dot_point;
         });
     }
 
-    std::vector<t_component> get_components(const image& img) const
+    std::vector<Component> get_components(const image& img) const
     {
-        std::vector<t_component> all_components;
+        std::vector<Component> all_components;
         std::unordered_set<pixel, pixel::hash> visited;
 
         for (int j = 0; j < img.rows(); ++j) {
@@ -384,11 +393,8 @@ private:
                         }
                     }
 
-                    // dot point is the middle (horizontal) point of the upper half part of the component
                     int dot_point = b.left() + (min_j + max_j)/2;
-                    b.set_dot_point(dot_point);
-
-                    all_components.emplace_back(b, std::move(im));
+                    all_components.emplace_back(std::move(im), b, dot_point);
 
                 }
             }
@@ -414,14 +420,14 @@ private:
 
         auto is_word_end = [&](int i) {
             int this_diff = std::min((int)(3*width_avg), 
-                                     std::max(components[i+1].first.left() - components[i].first.right(), 0));
+                                     std::max(components[i+1].bounding_box.left() - components[i].bounding_box.right(), 0));
 
             int prev_diff = (i > 0) ? std::min((int)(3*width_avg), 
-                                                std::max(components[i].first.left() - components[i-1].first.right(), 0)) 
+                                                std::max(components[i].bounding_box.left() - components[i-1].bounding_box.right(), 0)) 
                                     : 1.5*space_avg;
 
             int next_diff = (i+2 < (int)components.size()) ?  std::min((int)(3*width_avg), 
-                                                              std::max(components[i+2].first.left() - components[i+1].first.right(), 0)) 
+                                                              std::max(components[i+2].bounding_box.left() - components[i+1].bounding_box.right(), 0)) 
                                                            : 1.5*space_avg;
 
             return (this_diff >= 1.5*prev_diff || this_diff >= 1.5*next_diff) && 
@@ -436,27 +442,20 @@ private:
 
         // word_ends[i] is true iff the ith component is the end of a word
         std::vector<bool> word_ends;
-        // predictions[i] is (one letter prediction, two letters prediction) of the ith component
-        std::vector<std::pair<char, std::string>> predictions;
-        // predictions_first[i] is a prediction of the component[i] got by model used to predict the first bigram letter
-        std::vector<char> predictions_first(components.size(), ' ');
-        // predictions_second[i] is a prediction of the component[i] got by model used to predict the second bigram letter
-        std::vector<char> predictions_second(components.size(), ' ');
 
         for (int i = 0; i < (int)components.size(); ++i) {
-            predictions.emplace_back(recognize(components[i].second));
+            recognize(components[i]);
             word_ends.emplace_back(is_word_end(i));
         }
 
         for (int i = 0; i < (int)components.size() - 1; ++i) {
             if (!word_ends[i]) {
-                auto merged = merge(components[i], components[i+1], predictions[i].first, predictions[i+1].first);
+                auto merged = merge(components[i], components[i+1]);
                 if (merged) {
-                    auto prediction = recognize(*merged, true);
-                    predictions_first[i] = prediction.second[0];
-                    predictions_second[i+1] = prediction.second[1];
-                    // std::cout << prediction.second << std::endl;
-                    // merged->show();
+                    recognize(*merged);
+                    components[i].first = merged->bigram.first;
+                    components[i+1].second = merged->bigram.second;
+                    // merged->img.show();
                     // cv::waitKey(0);
                 }
             }
@@ -464,11 +463,11 @@ private:
 
         for (int i = 0; i < (int)components.size(); ++i) {
             if (m_debug) {
-                components[i].second.save(m_debug_output_tmp / std::to_string(line_num) / (std::to_string(image_count) + ".png"));
+                components[i].img.save(m_debug_output_tmp / std::to_string(line_num) / (std::to_string(image_count) + ".png"));
                 ++image_count;
             }
 
-            update_candidates_and_default_word(words_candidates, default_word, predictions[i], predictions_first[i], predictions_second[i], components[i].second.rows() > height_avg);
+            update_candidates_and_default_word(words_candidates, default_word, components[i], components[i].img.rows() > height_avg);
 
             if (i == (int)components.size()-1 || word_ends[i]) {
                 auto selected_word = select_word(words_candidates);
@@ -570,35 +569,30 @@ private:
         }
     }
 
-    std::pair<char, std::string> recognize(image component, bool merged = false) const
+    void recognize(Component & component) const
     {
-        // if model classifies component as one letter, return only one letter prediction
-        // if model classifies component as two letters, return one letter prediction and two letters prediction
-        // if merged is true than we are only interested in bigram prediction
-        component.resize(28,28);
-        auto t = component.get_tensor(0,1);
+        image reized_img = component.img;
+        reized_img.resize(28,28);
+        auto t = reized_img.get_tensor(0,1);
 
-        if (merged) {
-            return {' ', std::string(1, char(m_models.model_first.predict_class({t}) + 97)) + std::string(1, char(m_models.model_second.predict_class({t}) + 97))};
+        if (component.is_bigram) {
+            component.bigram = {char(m_models.model_first.predict_class({t}) + 97), char(m_models.model_second.predict_class({t}) + 97)};
         }
+        else {
+            component.one_letter =  char(m_models.model_one.predict_class({t}) + 97);
 
-        // one letter prediction
-        char character =  char(m_models.model_one.predict_class({t}) + 97);
-
-        if (m_models.model_one_two.predict_class({t}) == 1) {
-            // two letters case
-            return  // one letter
-                    {character, 
-                    // two letters
-                    std::string(1, char(m_models.model_first.predict_class({t}) + 97)) + std::string(1, char(m_models.model_second.predict_class({t}) + 97))};
+            if (m_models.model_one_two.predict_class({t}) == 1) {
+                component.is_bigram = true;
+                component.bigram = {char(m_models.model_first.predict_class({t}) + 97), char(m_models.model_second.predict_class({t}) + 97)};
+            }
         }
-
-        return {character, ""};
     }
 
-    std::optional<image> merge(const t_component& img_a, const t_component& img_b, char label_a, char label_b) const
+    std::optional<Component> merge(const Component& img_a, const Component& img_b) const
     {
         // merge images a and b into ab
+        char label_a = img_a.one_letter;
+        char label_b = img_b.one_letter;
         int expected_number_of_components = 0;
         if (label_a != 'i' && label_a != 'j') {
             if (label_b != 'i' && label_b != 'j') {
@@ -618,26 +612,26 @@ private:
         }
 
         int step = 0;
-        int offset_a = std::max(0, img_b.first.bottom() - img_a.first.bottom());
-        int offset_b = std::max(0, img_a.first.bottom() - img_b.first.bottom());
+        int offset_a = std::max(0, img_b.bounding_box.bottom() - img_a.bounding_box.bottom());
+        int offset_b = std::max(0, img_a.bounding_box.bottom() - img_b.bounding_box.bottom());
 
         while (true) {
-            auto result = merge(img_a.second, img_b.second, step, offset_a, offset_b);
+            auto result = merge(img_a.img, img_b.img, step, offset_a, offset_b);
             step += 1;
-            if (step>=img_a.second.rows() || result.cols() - step < 0) {
+            if (step >= img_a.img.rows() || result.img.cols() - step < 0) {
                 return std::nullopt;
             }
 
-            if (number_of_components_expected(result, expected_number_of_components)) {
-                result = merge(img_a.second, img_b.second, step+1, offset_a, offset_b);
-                return std::optional<image>(result);
+            if (number_of_components_expected(result.img, expected_number_of_components)) {
+                result = merge(img_a.img, img_b.img, step+1, offset_a, offset_b);
+                return std::optional<Component>(result);
             }
         }
 
         return std::nullopt;
     }
 
-    image merge(const image& img_a, const image& img_b, int step, int offset_a, int offset_b) const
+    Component merge(const image& img_a, const image& img_b, int step, int offset_a, int offset_b) const
     {
         image result(std::max(img_a.rows()+offset_a, img_b.rows()+offset_b), img_a.cols()+img_b.cols());
 
@@ -661,7 +655,7 @@ private:
         }
 
         result.crop();
-        return result;
+        return Component(std::move(result), {-1,-1,-1,-1}, -1, true);
     }
 
     bool number_of_components_expected(const image& img, int expected_number_of_components) const
