@@ -2,7 +2,9 @@
 
 C++ handwritten text recognition pipeline for scanned note images. The project combines line segmentation, connected-component analysis, neural letter recognition, bigram handling, and dictionary-based spell correction to turn handwritten page images into plain text.
 
-<img src="docs/text_recognition_preview.png" alt="Example handwritten input" width="760">
+<img src="docs/text_recognition_preview.png" alt="Example handwritten input" width="680">
+
+Related projects: [mrdakj/letters](https://github.com/mrdakj/letters) trains the Python/TensorFlow letter models, and [mrdakj/line_segmentation](https://github.com/mrdakj/line_segmentation) contains the C++/OpenCV line-segmentation work integrated here.
 
 ## What it does
 
@@ -80,6 +82,3 @@ Recognize all images in a directory:
 
 Outputs are written to `out/`. Files ending in `_dictionary.txt` include dictionary/spell-correction post-processing.
 
-## Related Project
-
-The neural letter models used here are trained in [mrdakj/letters](https://github.com/mrdakj/letters), which builds the synthetic/processed letter datasets, trains the CNN classifiers, and exports models for use in this C++ recognizer.
