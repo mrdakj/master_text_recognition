@@ -2,7 +2,7 @@
 
 C++ handwritten text recognition pipeline for scanned note images. The project combines line segmentation, connected-component analysis, neural letter recognition, bigram handling, and dictionary-based spell correction to turn handwritten page images into plain text.
 
-![Example handwritten input](images/10.png)
+<img src="docs/text_recognition_preview.png" alt="Example handwritten input" width="760">
 
 ## What it does
 
@@ -11,6 +11,15 @@ C++ handwritten text recognition pipeline for scanned note images. The project c
 - Runs exported Keras models from C++ with `frugally-deep`.
 - Uses a JamSpell language model and a word dictionary to improve recognition output.
 - Supports debug output for inspecting intermediate segmentation and recognition steps.
+
+## Tech Stack
+
+- C++17
+- OpenCV
+- CMake
+- frugally-deep for running exported neural-network models in C++
+- JamSpell for spell correction
+- nlohmann/json, Eigen, FunctionalPlus through the model inference stack
 
 ## Pipeline
 
@@ -25,20 +34,12 @@ input image
   -> text output
 ```
 
-## Tech Stack
-
-- C++17
-- OpenCV
-- CMake
-- frugally-deep for running exported neural-network models in C++
-- JamSpell for spell correction
-- nlohmann/json, Eigen, FunctionalPlus through the model inference stack
-
 ## Repository Layout
 
 ```text
 .
 |-- images/          # handwritten input examples
+|-- docs/            # README preview assets
 |-- include/         # image utilities and line segmentation code
 |-- model/           # exported recognition models and JamSpell language model
 |-- out/             # generated recognition outputs
@@ -81,4 +82,4 @@ Outputs are written to `out/`. Files ending in `_dictionary.txt` include diction
 
 ## Related Project
 
-The neural letter models used here are trained in the companion [Letters Recognition Models](../letters) project, which builds the synthetic/processed letter datasets, trains the CNN classifiers, and exports models for use in this C++ recognizer.
+The neural letter models used here are trained in [mrdakj/letters](https://github.com/mrdakj/letters), which builds the synthetic/processed letter datasets, trains the CNN classifiers, and exports models for use in this C++ recognizer.
