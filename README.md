@@ -1,61 +1,84 @@
-# Usage
+# Handwritten Text Recognition
+
+C++ handwritten text recognition pipeline for scanned note images. The project combines line segmentation, connected-component analysis, neural letter recognition, bigram handling, and dictionary-based spell correction to turn handwritten page images into plain text.
+
+![Example handwritten input](images/10.png)
+
+## What it does
+
+- Segments handwritten pages into text lines using an image-processing pipeline based on strip connections.
+- Extracts connected components and classifies whether a component represents one letter or a two-letter bigram.
+- Runs exported Keras models from C++ with `frugally-deep`.
+- Uses a JamSpell language model and a word dictionary to improve recognition output.
+- Supports debug output for inspecting intermediate segmentation and recognition steps.
+
+## Pipeline
+
+```text
+input image
+  -> line segmentation
+  -> connected-component extraction
+  -> one-letter / bigram decision
+  -> neural letter prediction
+  -> word assembly
+  -> optional dictionary correction
+  -> text output
 ```
+
+## Tech Stack
+
+- C++17
+- OpenCV
+- CMake
+- frugally-deep for running exported neural-network models in C++
+- JamSpell for spell correction
+- nlohmann/json, Eigen, FunctionalPlus through the model inference stack
+
+## Repository Layout
+
+```text
+.
+|-- images/          # handwritten input examples
+|-- include/         # image utilities and line segmentation code
+|-- model/           # exported recognition models and JamSpell language model
+|-- out/             # generated recognition outputs
+|-- dictionary/      # English word dictionary used by correction step
+|-- jamspell/        # local JamSpell integration
+|-- contrib/         # third-party support libraries
+`-- main.cpp         # recognition pipeline and CLI entry point
+```
+
+## Build
+
+```bash
 mkdir build
 cd build
 cmake ..
 cmake --build .
-# recognize specific image
-./main path_to_img [dictionary] [debug] 
-# example
-./main ../images/1.png dictionary debug 
-# recognize all images
+```
+
+## Usage
+
+Recognize one image:
+
+```bash
+./main ../images/1.png dictionary
+```
+
+Recognize one image and keep debug artifacts:
+
+```bash
+./main ../images/1.png dictionary debug
+```
+
+Recognize all images in a directory:
+
+```bash
 ./main ../images
 ```
 
-Used: https://github.com/bakwc/JamSpell  
+Outputs are written to `out/`. Files ending in `_dictionary.txt` include dictionary/spell-correction post-processing.
 
-Used: https://github.com/Dobiasd/frugally-deep
+## Related Project
 
-frugally-deep
-=============
-
-Installation
-------------
-
-You can install frugally-deep using cmake as shown below, or (if you prefer) download the [code](https://github.com/Dobiasd/frugally-deep/archive/master.zip) (and the [code](https://github.com/Dobiasd/FunctionalPlus/archive/master.zip) of [FunctionalPlus](https://github.com/Dobiasd/FunctionalPlus)), extract it and tell your compiler to use the `include` directories.
-
-```
-git clone -b 'v0.2.14-p0' --single-branch --depth 1 https://github.com/Dobiasd/FunctionalPlus
-cd FunctionalPlus
-mkdir -p build && cd build
-cmake ..
-make && sudo make install
-cd ../..
-
-git clone -b '3.3.9' --single-branch --depth 1 https://gitlab.com/libeigen/eigen.git
-cd eigen
-mkdir -p build && cd build
-cmake ..
-make && sudo make install
-sudo ln -s /usr/local/include/eigen3/Eigen /usr/local/include/Eigen
-cd ../..
-
-git clone -b 'v3.9.1' --single-branch --depth 1 https://github.com/nlohmann/json
-cd json
-mkdir -p build && cd build
-cmake -DBUILD_TESTING=OFF ..
-make && sudo make install
-cd ../..
-
-git clone https://github.com/Dobiasd/frugally-deep
-cd frugally-deep
-mkdir -p build && cd build
-cmake ..
-make && sudo make install
-cd ../..
-```
-
-
-```bash
-python3 keras_export/convert_model.py my_model fdeep_model.json
-```
+The neural letter models used here are trained in the companion [Letters Recognition Models](../letters) project, which builds the synthetic/processed letter datasets, trains the CNN classifiers, and exports models for use in this C++ recognizer.
